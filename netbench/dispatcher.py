@@ -1,11 +1,12 @@
 import select
 import time
 import socket
+import logging
 
 # Error imports / sets
 from errno import EINTR, EINPROGRESS, EALREADY, EWOULDBLOCK, EISCONN, \
 				EINVAL, ENOTCONN, EBADF, ECONNRESET, ESHUTDOWN, EPIPE, \
-				ECONNABORTED
+				ECONNABORTED, errorcode
 
 _reraised_exceptions = (KeyboardInterrupt, SystemExit)
 _disconnected = (ECONNRESET, ENOTCONN, ESHUTDOWN, ECONNABORTED, EPIPE, EBADF)
@@ -40,6 +41,9 @@ class EventLoop(object):
 		fd = obj.sock.fileno()
 		if fd not in cls.socket_table:
 			cls.socket_table[fd] = obj
+	
+		log_str = 'Adding dispatcher: %s' % obj
+		logging.root.debug(log_str)
 
 	def run(cls, timeout = 0.0):
 		paused = False
@@ -63,6 +67,9 @@ class EventLoop(object):
 			try:
 				r, w, e = select.select(r, w, e, timeout)
 			except select.err, err:
+				log_str = 'Error: %s' % err.args[0]
+				logging.root.error(log_str)
+
 				if err.args[0] != EINTR:
 					raise
 				else:
@@ -96,6 +103,7 @@ class EventLoop(object):
 		try:
 			obj.handle_read_event()
 		except _reraised_exceptions:
+			logging.root.error('Read error')
 			raise
 		except:
 			obj.handle_error()
@@ -104,6 +112,7 @@ class EventLoop(object):
 		try:
 			obj.handle_write_event()
 		except _reraised_exceptions:
+			logging.root.error('Write error')
 			raise
 		except:
 			obj.handle_error()
@@ -112,6 +121,7 @@ class EventLoop(object):
 		try:
 			obj.handle_except_event()
 		except _reraised_exceptions:
+			logging.root.error('Exception error')
 			raise
 		except:
 			obj.handle_error()
@@ -153,9 +163,14 @@ class Dispatcher:
 			try:
 				self.addr = sock.getpeername()
 			except socket.error, err:
+				log_str = 'Unable to auto-obtain addr: %s' % _sockerror(err.args[0])
+				logging.root.info(log_str)
+				
 				if err.args[0] in (ENOTCONN, EINVAL):
 					self.connected = False
 			else:
+				log_str = 'Error: %s' % _sockerror(err)
+				logging.root.error(log_str)
 				raise	
 
 	def connect(self, address, port):
@@ -164,12 +179,19 @@ class Dispatcher:
 
 		err = self.sock.connect_ex((address, port))
 		if err in (EINPROGRESS, EALREADY, EWOULDBLOCK):
+			log_str = 'Could not connect: %s' % _sockerror(err)
+			logging.root.info(log_str)
 			self.addr = (address, port)
 			return
 		if err in (0, EISCONN):
+			log_str = 'Connected (addr=%s, port=%s)' % (address, port)
+			logging.root.debug(log_str)			
+
 			self.addr = (address, port)
 			self.handle_connect_event()
 		else:
+			log_str = 'Error: %s' % _sockerror(err)
+			logging.root.error(log_str)
 			raise socket.error(err, _sockerror(err))
 
 	def close(self):
@@ -180,6 +202,8 @@ class Dispatcher:
 			self.sock.close()
 		except socket.error, err:
 			if err.args[0] not in (ENOTCONN, EBADF):
+				log_str = 'Error: %s' % _sockerror(err.args[0])
+				logging.root.error(log_str)
 				raise
 
 	def send(self, data):
@@ -187,12 +211,17 @@ class Dispatcher:
 			result = self.sock.send(data)
 			return result
 		except socket.error, err:
+			log_str = 'Could not send data: %s' % _sockerror(err.args[0])
+			logging.root.info(log_str)
+			
 			if err.args[0] == EWOULDBLOCOK:
 				return 0
 			elif err.args[0] in _disconnected:
 				self.handle_close()
 				return 0
 			else:
+				log_str = 'Error: %s' % _sockerror(err.args[0])
+				logging.root.error(log_str)
 				raise
 
 	def recv(self, buffer_size):
@@ -204,10 +233,15 @@ class Dispatcher:
 			else:
 				return databuffer
 		except socket.error, err:
+			log_str = 'Could not recv data: %s' % _sockerror(err.args[0])
+			logging.root.info(log_str)
+
 			if err.args[0]  in _disconnected:
 				self.handle_close()
 				return ''
 			else:
+				log_str = 'Error: %s' % _sockerror(err.args[0])
+				logging.root.error(log_str)
 				raise
 
 	# ==================================================================
