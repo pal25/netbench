@@ -47,7 +47,7 @@ class EventLoop(object):
 
 	def run(cls, timeout = 0.0):
 		paused = False
-		while not paused:
+		while not paused and cls.socket_table:
 			r = []; w = []; e = []
 			for fd, obj in cls.socket_table.items():
 				is_r = obj.readable()
@@ -66,7 +66,7 @@ class EventLoop(object):
 
 			try:
 				r, w, e = select.select(r, w, e, timeout)
-			except select.err, err:
+			except select.error, err:
 				log_str = 'Error: %s' % err.args[0]
 				logging.root.error(log_str)
 
@@ -76,75 +76,67 @@ class EventLoop(object):
 					return
 
 			for fd in r:
-				obj = map.get(fd)
+				obj = cls.socket_table.get(fd)
 				if obj is None:
 					continue
 				else:
-					read(obj)
+					cls.read(obj)
 
 			for fd in w:
-				obj = map.get(fd)
+				obj = cls.socket_table.get(fd)
 				if obj is None:
 					continue
 				else:
-					write(obj)
+					cls.write(obj)
 
 			for fd in e:
-				obj = map.get(fd)
+				obj = cls.socket_table.get(fd)
 				if obj is None:
 					continue
 				else:
-					_exception(obj)
+					cls._exception(obj)
 
 	def stop():
 		paused = True
 
-	def read(obj):
+	def read(cls, obj):
 		try:
 			obj.handle_read_event()
 		except _reraised_exceptions:
 			logging.root.error('Read error')
 			raise
 		except:
-			obj.handle_error()
+			obj.handle_except()
 
-	def write(obj):
+	def write(cls, obj):
 		try:
 			obj.handle_write_event()
 		except _reraised_exceptions:
 			logging.root.error('Write error')
 			raise
 		except:
-			obj.handle_error()
+			obj.handle_except()
 
-	def _exception(obj):
+	def _exception(cls, obj):
 		try:
 			obj.handle_except_event()
 		except _reraised_exceptions:
 			logging.root.error('Exception error')
 			raise
 		except:
-			obj.handle_error()
+			obj.handle_except()
 	
 class Dispatcher:
 	"""Dispatcher is an abstract class which is the default implementation for
 		a connection in the event loop.
 
 	   	sock = The socket we are wrapping
-		
-		connecting = Socket State: in currently attempting to connect
-			which will be handled by the handle_connect call
-		
-		connected = Socket State: socket connected successfully and the
-			connection has been handled properly
 
 		accepting = Socket State: the socket is listening for connections
 	"""
 	def __init__(self):
 		self.sock = None
 		self.addr = None
-		self.connected = False
-		self.connecting = False
 		self.accepting = False
 
 	# ==================================================================
@@ -158,7 +150,6 @@ class Dispatcher:
 		if self.sock is None:
 			sock.setblocking(0)
 			self.sock = sock
-			self.connected = True
 			
 			try:
 				self.addr = sock.getpeername()
@@ -166,39 +157,15 @@ class Dispatcher:
 				log_str = 'Unable to auto-obtain addr: %s' % _sockerror(err.args[0])
 				logging.root.info(log_str)
 				
-				if err.args[0] in (ENOTCONN, EINVAL):
-					self.connected = False
-			else:
-				log_str = 'Error: %s' % _sockerror(err)
-				logging.root.error(log_str)
-				raise	
-
-	def connect(self, address, port):
-		self.connecting = True
-		self.connected = False
-
-		err = self.sock.connect_ex((address, port))
-		if err in (EINPROGRESS, EALREADY, EWOULDBLOCK):
-			log_str = 'Could not connect: %s' % _sockerror(err)
-			logging.root.info(log_str)
-			self.addr = (address, port)
-			return
-		if err in (0, EISCONN):
-			log_str = 'Connected (addr=%s, port=%s)' % (address, port)
-			logging.root.debug(log_str)			
-
-			self.addr = (address, port)
-			self.handle_connect_event()
-		else:
-			log_str = 'Error: %s' % _sockerror(err)
-			logging.root.error(log_str)
-			raise socket.error(err, _sockerror(err))
+				if err.args[0] not in (ENOTCONN, EINVAL):
+					log_str = 'Error: %s' % _sockerror(err)
+					logging.root.error(log_str)
+					raise	
 
 	def close(self):
-		self.connected = False
 		self.accepting = False
-		self.connecting = False
 		try:
+			del EventLoop.socket_table[self.sock.fileno()]			
 			self.sock.close()
 		except socket.error, err:
 			if err.args[0] not in (ENOTCONN, EBADF):
@@ -268,15 +235,6 @@ class Dispatcher:
 		should be overwritten."""
 		return False
 
-	def handle_connect(self):
-		"""ABSTRACT FUNCTION
-
-		The functions handles program logic pertaining for a socket 
-		connecting. By default this function does nothing and should be
-		overwritten.
-		"""
-		pass
-
 	def handle_read(self):
 		"""ABSTRACT FUNCTION
 
@@ -327,20 +285,7 @@ class Dispatcher:
 	#
 	# These functions SHOULD NOT be overwritten.
 	# These functions handle the logic to make sure there are no errors.
-	# ==================================================================
-	
-	def handle_connect_event(self):
-		"""Handles socket connections and makes sure there are not errors.
-		This function SHOULD NOT be implemented as it hands the event off to
-		handle_connect() for user implementation.
-		"""	
-		err = self.sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-		if err != 0:
-			raise socket.error(err, _sockerror(err))
-		self.handle_connect()
-		self.connecting = False
-		self.connected = True
-	
+	# ==================================================================	
 	def handle_read_event(self):
 		"""Handles read events and makes sure there are not errors.
 		This function SHOULD NOT be implemented as it hands the event off to
@@ -348,10 +293,6 @@ class Dispatcher:
 		"""	
 		if self.accepting:
 			self.handle_accept()
-		elif not self.connected:
-			if self.connecting:
-				self.handle_connect_event()
-			self.handle_read()
 		else:
 			self.handle_read()
 
@@ -363,9 +304,6 @@ class Dispatcher:
 		if self.accepting:
 			return
 		
-		if not self.connected:
-			if self.connecting:
-				self.handle_connect_event()
 		self.handle_write()
 
 	def handle_except_event(self):
