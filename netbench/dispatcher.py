@@ -106,6 +106,7 @@ class EventLoop(object):
 			logging.root.error('Read error')
 			raise
 		except:
+			logging.exception('Read error')
 			obj.handle_except()
 
 	def write(cls, obj):
@@ -114,7 +115,8 @@ class EventLoop(object):
 		except _reraised_exceptions:
 			logging.root.error('Write error')
 			raise
-		except:
+		except Exception, err:
+			logging.exception('Write error')
 			obj.handle_except()
 
 	def _exception(cls, obj):

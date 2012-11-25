@@ -35,9 +35,9 @@ def parseargs():
 
 	run((args.address, args.port), args.timeout)
 
-def run(addr, timeout):
-	probe = UDPProbe(addr)
-	handler = ICMPHandler(probe.binary_search)
+def run(destaddr, timeout):
+	probe = UDPProbe(destaddr)
+	handler = ICMPHandler(destaddr, probe.binary_search)
 
 	loop = EventLoop()
 	loop.add_dispatcher(probe)
