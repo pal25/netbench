@@ -43,7 +43,7 @@ class EventLoop(object):
 			cls.socket_table[fd] = obj
 	
 		log_str = 'Adding dispatcher: %s' % obj
-		logging.root.debug(log_str)
+		logging.root.info(log_str)
 
 	def run(cls, timeout = 0.0):
 		paused = False
@@ -54,7 +54,7 @@ class EventLoop(object):
 				is_w = obj.writeable()
 
 				if is_r:
-					f.append(fd)
+					r.append(fd)
 				if is_w:
 					w.append(fd)
 				if is_r or is_w:
@@ -160,7 +160,30 @@ class Dispatcher:
 				if err.args[0] not in (ENOTCONN, EINVAL):
 					log_str = 'Error: %s' % _sockerror(err)
 					logging.root.error(log_str)
-					raise	
+					raise
+
+	def listen(self, num):
+		self.accepting = true
+		if os.name == 'nt' and num > 5:
+			num = 5
+		return self.sock.listen(num)
+	
+	def bind(self, addr):
+		self.addr = addr
+		return self.sock.bind(self.addr)
+
+	def accept(self):
+		try:
+			conn, addr = self.sock.accept()
+		except TypeError:
+			return None
+		except socket.error as err:
+			if err.args[0] in (EWOULDBLOCK, ECONNABORTED, EAGAIN):
+				return None
+			else:
+				raise
+		else:
+			return conn, addr	
 
 	def close(self):
 		self.accepting = False

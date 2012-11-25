@@ -1,4 +1,5 @@
 from udpprobe import UDPProbe
+from icmphandler import ICMPHandler
 from dispatcher import EventLoop
 import argparse, sys
 import logging
@@ -32,13 +33,15 @@ def parseargs():
 	logging.config.fileConfig('logging.conf')
 	logging.root.setLevel(level)
 
-	run(args.address, args.port, args.timeout)
+	run((args.address, args.port), args.timeout)
 
-def run(addr, port, timeout):
-	probe = UDPProbe(addr, port)
+def run(addr, timeout):
+	probe = UDPProbe(addr)
+	handler = ICMPHandler(probe.binary_search)
 
 	loop = EventLoop()
 	loop.add_dispatcher(probe)
+	loop.add_dispatcher(handler)
 	loop.run(timeout)
 
 if __name__ == '__main__':
