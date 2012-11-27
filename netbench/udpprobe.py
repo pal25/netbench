@@ -15,17 +15,8 @@ class UDPProbe(Dispatcher):
 		
 		srcaddr = (socket.gethostbyname('192.168.0.10'), destaddr[1])
 		
-		self.datagram = Datagram(srcaddr[0], 
-								destaddr[0], 
-								srcaddr[1], 
-								destaddr[1], 
-								'')		
-
-		self.packet = IP(socket.IPPROTO_UDP, 
-						srcaddr[0], 
-						destaddr[0], 
-						self.datagram, 
-						ttl=self.max_ttl)
+		self.datagram = Datagram(srcaddr[0],destaddr[0],srcaddr[1],destaddr[1],'')		
+		self.packet = IP(socket.IPPROTO_UDP,srcaddr[0],destaddr[0],self.datagram,ttl=self.max_ttl)
 		
 		try:		
 			sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
@@ -50,23 +41,24 @@ class UDPProbe(Dispatcher):
 		if icmp.type == 3:
 			self.max_ttl = self.min_ttl + ((self.max_ttl-1) - self.min_ttl) / 2
 
-			log_str = 'TTL High: (Max: %s, Min %s (TTL))' % (self.max_ttl, self.min_ttl)
+			log_str = 'TTL High changing to: (Max: %s, Min %s (TTL))' % (self.max_ttl, self.min_ttl)
 			logging.root.info(log_str)
-
 		elif icmp.type == 11:
+			self.min_ttl = self.max_ttl + 1
 			self.max_ttl = self.max_ttl * 2
 
-			log_str = 'TTL Low: (Max: %s, Min: %s (TTL))' % (self.max_ttl, self.min_ttl)
+			log_str = 'TTL Low changing to: (Max: %s, Min: %s (TTL))' % (self.max_ttl, self.min_ttl)
 			logging.root.info(log_str)
-
 		else:
 			log_str = 'Unknown ICMP Type=%d, Code=%d' % (icmp.type, icmp.code)
 			logging.root.info(log_str)
 
-
-		self.packet.ttl = self.max_ttl
-		self.packet.ident = self.packet.ident+1
-		self.ready = True
+		if self.max_ttl == self.min_ttl:
+			print 'found ttl', self.max_ttl
+		else:
+			self.packet.ttl = self.max_ttl
+			self.packet.ident = self.packet.ident+1
+			self.ready = True
 		
 	def writeable(self):
 		return self.ready

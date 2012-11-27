@@ -1,4 +1,5 @@
 from dispatcher import Dispatcher, _sockerror
+from packet import IP
 import socket
 import logging
 
@@ -32,7 +33,9 @@ class ICMPHandler(Dispatcher):
 	def handle_read(self):
 		logging.root.debug('Handling Read')
 		data, addr = self.sock.recvfrom(1024)
-		self.callback(data[20:28])		
+		recvIP = IP.disassemble(data)
+		
+		self.callback(data[recvIP.header_length:recvIP.header_length+8])		
 
 	def handle_except(self):
 		logging.root.debug('Handling Except')
