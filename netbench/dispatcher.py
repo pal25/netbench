@@ -31,6 +31,7 @@ class EventLoop(object):
 	"""
 	_instance = None
 	socket_table = {}
+	paused = False
 
 	def __new__(cls):
 		if not cls._instance:
@@ -46,10 +47,12 @@ class EventLoop(object):
 		logging.root.info(log_str)
 
 	def run(cls, timeout = 0.0):
-		paused = False
-		while not paused and cls.socket_table:
+		cls.paused = False
+		while not cls.paused:
+			#logging.root.info('EventLoop Still Running...')
 			r = []; w = []; e = []
 			for fd, obj in cls.socket_table.items():
+				obj.sock.settimeout(timeout)
 				is_r = obj.readable()
 				is_w = obj.writeable()
 
@@ -96,8 +99,9 @@ class EventLoop(object):
 				else:
 					cls._exception(obj)
 
-	def stop():
-		paused = True
+	def stop(cls):
+		logging.root.debug('Stopping the EventLoop')
+		cls.paused = True
 
 	def read(cls, obj):
 		try:
@@ -149,20 +153,29 @@ class Dispatcher:
 	# ==================================================================	
 
 	def set_socket(self, sock):
+		"""SOCKET WRAPPER set_socket
+
+		This function sets the socket for a given dispatcher. It will also
+		try to set the socket to a non-blocking socket, and retreive the host name
+		for the socket host.
+
+		sock = The input socket
+		"""
 		if self.sock is None:
 			sock.setblocking(0)
 			self.sock = sock
 			
 			try:
-				self.addr = sock.getpeername()
+				self.srcaddr = sock.getsockname()
 			except socket.error, err:
-				log_str = 'Unable to auto-obtain addr: %s' % _sockerror(err.args[0])
-				logging.root.info(log_str)
-				
 				if err.args[0] not in (ENOTCONN, EINVAL):
 					log_str = 'Error: %s' % _sockerror(err)
 					logging.root.error(log_str)
 					raise
+				else:
+					log_str = 'Unable to auto-obtain addr: %s' % _sockerror(err.args[0])
+					logging.root.info(log_str)
+				
 
 	def listen(self, num):
 		self.accepting = true
