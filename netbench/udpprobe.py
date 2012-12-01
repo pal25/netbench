@@ -6,14 +6,16 @@ import logging
 import os, sys
 
 class UDPProbe(Dispatcher):
-	def __init__(self, destaddr, callback):
+	def __init__(self, destaddr):
 		Dispatcher.__init__(self)
-		self.callback = callback		
+		self.loop = EventLoop()	# Get a ref to the eventloop	
 
 		self.ready = True
 		self.max_ttl = 16
 		self.current_ttl = 16
 		self.min_ttl = 0
+
+		self.destaddr = destaddr
 		
 		try:		
 			sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
@@ -28,27 +30,40 @@ class UDPProbe(Dispatcher):
 			sys.exit(-1)
 
 		# Hacky but if we're behind a NAT it's hard to find otherwise...		
-		ip = (urllib.urlopen('http://automation.whatismyip.com/n09230945.asp').read())
+		#ip = (urllib.urlopen('http://automation.whatismyip.com/n09230945.asp').read())
+		ip = '127.0.0.1'		
 		self.srcaddr = (ip, destaddr[1])
+		
+		self.ident = self.loop.add_callback(self.binary_search)
 
 		# Setup the IP/UDP packets for sending.		
-		self.datagram = Datagram(self.srcaddr[0],destaddr[0],self.srcaddr[1],destaddr[1],'')		
-		self.packet = IP(socket.IPPROTO_UDP,self.srcaddr[0],destaddr[0],self.datagram,ttl=self.max_ttl)
+		self.datagram = Datagram(self.srcaddr[0],
+				destaddr[0],
+				self.srcaddr[1],
+				destaddr[1],
+				'')		
+		
+		self.packet = IP(socket.IPPROTO_UDP,
+				self.srcaddr[0],
+				destaddr[0],
+				self.datagram,
+				ttl=self.max_ttl,
+				ident = self.ident)
+
 		log_str = 'Setup UDP socket (srcaddr=%s, srcport=%s) (destaddr=%s, destport=%s)' % (str(self.srcaddr[0]), str(self.srcaddr[1]), destaddr[0], str(destaddr[1]))
-		logging.root.debug(log_str)
+		logging.root.info(log_str)
 
 		self.destaddr = destaddr
 
 	def __repr__(self):
 		return '<UDPProbe: Addr=(%s, %s), TTL=%s>' % (self.destaddr[0],str(self.destaddr[1]),self.max_ttl)
 
-	def binary_search(self, data):
+	def binary_search(self, icmp):
 		"""Binary Search takes raw packet data, and searches for the proper number
 		of hops to a particular router.
 
 		data = the raw ip packet
 		"""
-		icmp = ICMPHeader.disassemble(data)
 		
 		if icmp.type == 3:
 			self.max_ttl = self.current_ttl - 1
@@ -70,7 +85,7 @@ class UDPProbe(Dispatcher):
 
 		if temp == self.current_ttl:
 			print 'Found ttl', self.current_ttl
-			self.callback()
+			self.loop.stop()
 		else:
 			self.packet.ttl = self.current_ttl
 			self.packet.ident = self.packet.ident+1
@@ -96,4 +111,5 @@ class UDPProbe(Dispatcher):
 	def handle_close(self):
 		"""See Dispatcher for details """
 		logging.root.debug('Handling Close')
+		self.loop.stop()
 		self.close()

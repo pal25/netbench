@@ -2,6 +2,7 @@ import select
 import time
 import socket
 import logging
+import random
 
 # Error imports / sets
 from errno import EINTR, EINPROGRESS, EALREADY, EWOULDBLOCK, EISCONN, \
@@ -31,12 +32,25 @@ class EventLoop(object):
 	"""
 	_instance = None
 	socket_table = {}
+	probes = {}
 	paused = False
 
 	def __new__(cls):
 		if not cls._instance:
 			cls._instance = super(EventLoop, cls).__new__(cls)
 		return cls._instance
+	
+	def add_callback(cls, callback):
+		randid = random.getrandbits(16)
+		while randid in cls.probes:
+			randid = random.getrandbits(16)
+						
+		cls.probes[randid] = callback
+
+		log_str = 'Adding Callback: id=%d, Callback=%s' % (randid, callback)
+		logging.root.info(log_str)
+		
+		return randid
 	
 	def add_dispatcher(cls, obj):
 		fd = obj.sock.fileno()
@@ -100,7 +114,7 @@ class EventLoop(object):
 					cls._exception(obj)
 
 	def stop(cls):
-		logging.root.debug('Stopping the EventLoop')
+		logging.root.info('Stopping the EventLoop')
 		cls.paused = True
 
 	def read(cls, obj):

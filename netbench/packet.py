@@ -59,7 +59,9 @@ class IP:
 		self.srcaddr = parse_addr(srcaddr)
 		self.destaddr = parse_addr(destaddr)
 		self.data = data
-
+		
+		logging.root.debug('IP ID=%s' % ident)
+		
 		if total_length == 0:		
 			self.total_length = self.header_length + self.data.total_length
 		self.ip_header = None
@@ -89,18 +91,20 @@ class IP:
 		self.assemble()
 		data = self.data.getdata
 		return self.ip_header + data
-
+	
 	@classmethod	
 	def disassemble(cls, recvdata):
-		version_ihl = struct.unpack('!B', recvdata[0])
-		version = (version_ihl[0] & 0xf0) >> 4
-		ihl = version_ihl[0] & 0x0f
+		logging.root.debug('IP Length: %d', len(recvdata))
+
+		version_ihl = struct.unpack('!B', recvdata[:1])[0]
+		version = (version_ihl >> 4) & 0x0f
+		ihl = version_ihl & 0x0f
 
 		if ihl == 5: # No options specified
 			tos, total_length, ident, flags_frag_off, ttl, protocol, checksum, \
 			srcaddr, destaddr = struct.unpack('!BHHHBBH4s4s', recvdata[1:20])
 
-			data = recvdata[21:]
+			data = recvdata[20:]
 			flags = (flags_frag_off & 0xe000) >> 13
 			frag_off = flags_frag_off & 0x1fff
 			srcaddr = socket.inet_ntoa(srcaddr)
@@ -167,6 +171,8 @@ class ICMPHeader:
 		self.code = icmpcode
 		self.data = data
 		self.checksum = checksum
+		
+		logging.root.debug(self)
 
 	def __repr__(self):
 		return '<ICMPHeader: Type=%d, Code=%d>' % (self.code, self.type)
@@ -176,5 +182,14 @@ class ICMPHeader:
 	
 	@classmethod
 	def disassemble(cls,recvdata):
-		icmptype, icmpcode, checksum, data = struct.unpack('BBH4s', recvdata)
-		return cls(icmptype, icmpcode, checksum, data)
+		log_str = 'ICMP Data Length=%d' % len(recvdata)
+		logging.root.debug(log_str)
+
+		icmptype, icmpcode, checksum = struct.unpack('!BBH', recvdata[0:4])
+		
+		if icmptype == 3 or icmptype == 11:
+			data = recvdata[8:]
+		else:
+			data = struct.unpack('!4s', recvdata[4:8])
+		
+		return cls(icmptype, icmpcode, data, checksum)
