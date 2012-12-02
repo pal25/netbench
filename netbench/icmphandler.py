@@ -1,27 +1,26 @@
-from dispatcher import Dispatcher, _sockerror, EventLoop
+from dispatcher import Dispatcher
 from packet import IP, ICMPHeader
+from utils import _sockerror, getLocalIP
+import eventloop
 import socket
 import urllib
 import logging
+import sys
 
 class ICMPHandler(Dispatcher):
 	def __init__(self, destaddr):
 		Dispatcher.__init__(self)
-		self.loop = EventLoop()
-		self.destaddr = destaddr
-		
-		# Hacky but if we're behind a NAT it's hard to find otherwise...
-		#ip = (urllib.urlopen('http://automation.whatismyip.com/n09230945.asp').read())
-		ip = '127.0.0.1'		
-		self.srcaddr = (ip, destaddr[1])
 
 		try:		
 			sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-			self.set_socket(sock)						
+			self.set_socket(sock)
+			self.srcaddr = (getLocalIP(), destaddr[1])
+			self.destaddr = destaddr						
 			self.bind(self.srcaddr)			
 		except socket.error, err:
 			log_str = 'Socket Error: %s' % _sockerror(err.args[0])
-			logging.root.error(log_str)	
+			logging.root.exception(log_str)
+			sys.exit(-1)
 
 		log_str = 'Setup ICMP Listener (addr=%s, port=%s)' % (self.srcaddr[0], str(self.srcaddr[1]))
 		logging.root.info(log_str)
@@ -35,10 +34,13 @@ class ICMPHandler(Dispatcher):
 	def handle_read(self):
 		logging.root.debug('Handling Read')
 		data, addr = self.sock.recvfrom(4096)
+		
 		recvIP = IP.disassemble(data)
 		recvICMP = ICMPHeader.disassemble(recvIP.data)
 		retnIP = IP.disassemble(recvICMP.data)
-		self.loop.probe[retnIP.ident](recvICMP)	
+		
+		if retnIP.ident in eventloop.probes:
+			eventloop.probes[retnIP.ident](recvICMP)	
 
 	def handle_except(self):
 		logging.root.debug('Handling Except')
@@ -46,7 +48,7 @@ class ICMPHandler(Dispatcher):
 
 	def handle_close(self):
 		logging.root.debug('Handling Close')
-		self.loop.stop()
+		eventloop.stop()
 		self.close()
 	
 		

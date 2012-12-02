@@ -1,5 +1,7 @@
-from dispatcher import EventLoop, Dispatcher, _sockerror
+from dispatcher import Dispatcher
 from packet import IP, Datagram, ICMPHeader
+from utils import _sockerror, getLocalIP
+import eventloop
 import socket
 import urllib
 import logging
@@ -7,20 +9,19 @@ import os, sys
 
 class UDPProbe(Dispatcher):
 	def __init__(self, destaddr):
-		Dispatcher.__init__(self)
-		self.loop = EventLoop()	# Get a ref to the eventloop	
+		Dispatcher.__init__(self)	
 
 		self.ready = True
 		self.max_ttl = 16
 		self.current_ttl = 16
 		self.min_ttl = 0
-
-		self.destaddr = destaddr
 		
 		try:		
 			sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
 			sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)						
-			self.set_socket(sock)		
+			self.set_socket(sock)
+			self.destaddr = destaddr
+			self.srcaddr = (getLocalIP(), destaddr[1])
 		except socket.error, err:
 			if _sockerror(err.args[0]) == 'EPERM':
 				logging.root.error('You need sudo privilages to use raw sockets')			
@@ -28,13 +29,8 @@ class UDPProbe(Dispatcher):
 				log_str = 'Socket Error: %s' % _sockerror(err.args[0])
 				logging.root.error(log_str)
 			sys.exit(-1)
-
-		# Hacky but if we're behind a NAT it's hard to find otherwise...		
-		#ip = (urllib.urlopen('http://automation.whatismyip.com/n09230945.asp').read())
-		ip = '127.0.0.1'		
-		self.srcaddr = (ip, destaddr[1])
 		
-		self.ident = self.loop.add_callback(self.binary_search)
+		self.ident = eventloop.add_callback(self.binary_search)
 
 		# Setup the IP/UDP packets for sending.		
 		self.datagram = Datagram(self.srcaddr[0],
@@ -67,14 +63,13 @@ class UDPProbe(Dispatcher):
 		
 		if icmp.type == 3:
 			self.max_ttl = self.current_ttl - 1
-			log_str = 'TTL Too High'
-			logging.root.info(log_str)
+			log_str = 'TTL Estimate Too High'
+			logging.root.debug(log_str)
 		elif icmp.type == 11:
 			self.min_ttl = self.max_ttl + 1
 			self.max_ttl = self.max_ttl * 2
-
-			log_str = 'TTL Too Low'
-			logging.root.info(log_str)
+			log_str = 'TTL Estimare Too Low'
+			logging.root.debug(log_str)
 		else:
 			log_str = 'Unknown ICMP Type=%d, Code=%d' % (icmp.type, icmp.code)
 			logging.root.info(log_str)
@@ -82,15 +77,14 @@ class UDPProbe(Dispatcher):
 		temp = self.current_ttl		
 		self.current_ttl = self.min_ttl + ((self.max_ttl - self.min_ttl) / 2)
 
-
-		if temp == self.current_ttl:
-			print 'Found ttl', self.current_ttl
-			self.loop.stop()
+		if self.min_ttl >= self.max_ttl:
+			log_str = 'Found TTL: %d' % self.current_ttl
+			logging.root.info(log_str)
+			eventloop.stop()
 		else:
 			self.packet.ttl = self.current_ttl
-			self.packet.ident = self.packet.ident+1
 			self.ready = True
-			log_str = 'Changing to: (Max: %s,Current: % s,Min: %s)' % (self.max_ttl, self.current_ttl, self.min_ttl)
+			log_str = 'Changing TTL: (Max:%s,Current:%s,Min:%s)' % (self.max_ttl, self.current_ttl, self.min_ttl)
 			logging.root.info(log_str)
 		
 	def writeable(self):
@@ -111,5 +105,5 @@ class UDPProbe(Dispatcher):
 	def handle_close(self):
 		"""See Dispatcher for details """
 		logging.root.debug('Handling Close')
-		self.loop.stop()
+		eventloop.stop()
 		self.close()

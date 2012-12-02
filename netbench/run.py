@@ -1,6 +1,6 @@
 from udpprobe import UDPProbe
 from icmphandler import ICMPHandler
-from dispatcher import EventLoop
+import eventloop
 import argparse, sys
 import logging
 import logging.config
@@ -36,14 +36,12 @@ def parseargs():
 	run((args.address, args.port), args.timeout)
 
 def run(destaddr, timeout):
-	loop = EventLoop()
-
 	probe = UDPProbe(destaddr)
 	handler = ICMPHandler(destaddr)
 	
-	loop.add_dispatcher(probe)
-	loop.add_dispatcher(handler)
-	loop.run(timeout)
+	eventloop.add_dispatcher(probe)
+	eventloop.add_dispatcher(handler)
+	eventloop.run(timeout)
 
 if __name__ == '__main__':
 	parseargs()

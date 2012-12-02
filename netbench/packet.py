@@ -3,14 +3,30 @@ import struct
 import logging
 import array
 
+# ==================================================================
+# HELPER FUNCTIONS
+#
+# These functions aid header generation.
+# These functions should only be called from header classes.
+# ==================================================================
+
 def compute_checksum(data):
+	"""Helper Function
+	
+	Computes checksums for different parts of the datagram.
+	This is general enough to work for ICMP, IP, and UDP checksums.
+	
+	input: Packed data to calculate checksum value
+	return: Checksum value
+	"""
 	if len(data) & 1:
 		data = data + '\0'
 
-	words = array.array('h', data)
 	sum = 0
+	words = array.array('h', data)
 	for word in words:
 		sum = sum + (word & 0xffff)
+		
 	hi = sum >> 16
 	low = sum & 0xffff
 	sum = hi + low
@@ -18,6 +34,14 @@ def compute_checksum(data):
 	return (~sum) & 0xffff
 		
 def parse_addr(addr):
+	"""Helper Function
+	
+	Takes an IP addr string and tries to properly record it.
+	If a hostname is given this function will look up the IP addr.
+	
+	input: String IP or String hostname
+	return: Properly packed IP addr
+	"""
 	try:
 		new_addr = socket.inet_aton(addr)
 	except:
@@ -30,7 +54,25 @@ def parse_addr(addr):
 
 	return new_addr
 
+# ==================================================================
+# HEADER FORMATTERS
+#
+# These functions generate different datagram headers
+# ==================================================================	
+
 class IP:
+	"""IP HEADER + PAYLOAD
+
+	This class generates IP headers + payload. Specifically it takes in 
+	values for various IP fields, and then appends the header with its
+	payload, regardless of what it is.
+	
+	This class can also pack IP headers + payload into the proper binary 
+	format needed to send the data. 
+	
+	This class can also disassemble packed IP headers + payloads into an 
+	IP class that can easily be read and called.
+	"""
 	def __init__(self,
 				protocol,
 				srcaddr,
@@ -85,7 +127,7 @@ class IP:
 		if self.checksum == 0:
 			self.checksum = compute_checksum(self.ip_header)
 			self.assemble()
-
+ 
 	@property
 	def getdata(self):
 		self.assemble()
@@ -118,6 +160,18 @@ class IP:
 			pass
 
 class Datagram:
+	"""UDP HEADER + PAYLOAD
+
+	This class generates UDP headers + payload. Specifically it takes in 
+	values for various UDP fields, and then appends the header with its
+	payload, regardless of what it is.
+	
+	This class can also pack UDP headers + payload into the proper binary 
+	format needed to send the data. 
+	
+	This class can also disassemble packed UDP headers + payloads into an 
+	UDP class that can easily be read and called. NOT IMPLEMENTED YET.
+	"""
 	def __init__(self, 
 				srcaddr, 
 				destaddr, 
@@ -166,6 +220,18 @@ class Datagram:
 		pass
 
 class ICMPHeader:
+	"""ICMP HEADER + PAYLOAD
+
+	This class generates ICMP headers + payload. Specifically it takes in 
+	values for various ICMP fields, and then appends the header with its
+	payload, regardless of what it is.
+	
+	This class can also pack ICMP headers + payload into the proper 
+	binary format needed to send the data. 
+	
+	This class can also disassemble packed ICMP headers + payloads into 
+	an ICMP class that can easily be read and called.
+	"""
 	def __init__(self,icmptype,icmpcode,data,checksum=0):
 		self.type = icmptype
 		self.code = icmpcode

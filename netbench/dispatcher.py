@@ -1,150 +1,7 @@
-import select
-import time
 import socket
 import logging
-import random
-
-# Error imports / sets
-from errno import EINTR, EINPROGRESS, EALREADY, EWOULDBLOCK, EISCONN, \
-				EINVAL, ENOTCONN, EBADF, ECONNRESET, ESHUTDOWN, EPIPE, \
-				ECONNABORTED, errorcode
-
-_reraised_exceptions = (KeyboardInterrupt, SystemExit)
-_disconnected = (ECONNRESET, ENOTCONN, ESHUTDOWN, ECONNABORTED, EPIPE, EBADF)
-
-def _sockerror(err):
-	"""Helper function that determines if the socket error has a name to
-	return to the user if the error occurs
-	"""
-	try:
-		return os.strerror(err)
-	except (ValueError, OverflowError, NameError):
-		if err in errorcode:
-			return errorcode[err]
-		return "Unknown error %s" %err
-
-class EventLoop(object):
-	"""EventLoop is a singleton class that handles non-blocking socket 
-		operations for ALL dispatchers
-
-		socket_table = the hashtable that stores socket file descriptors and the 
-		dispatcher that is handling that socket
-	"""
-	_instance = None
-	socket_table = {}
-	probes = {}
-	paused = False
-
-	def __new__(cls):
-		if not cls._instance:
-			cls._instance = super(EventLoop, cls).__new__(cls)
-		return cls._instance
-	
-	def add_callback(cls, callback):
-		randid = random.getrandbits(16)
-		while randid in cls.probes:
-			randid = random.getrandbits(16)
-						
-		cls.probes[randid] = callback
-
-		log_str = 'Adding Callback: id=%d, Callback=%s' % (randid, callback)
-		logging.root.info(log_str)
-		
-		return randid
-	
-	def add_dispatcher(cls, obj):
-		fd = obj.sock.fileno()
-		if fd not in cls.socket_table:
-			cls.socket_table[fd] = obj
-	
-		log_str = 'Adding dispatcher: %s' % obj
-		logging.root.info(log_str)
-
-	def run(cls, timeout = 0.0):
-		cls.paused = False
-		while not cls.paused:
-			#logging.root.info('EventLoop Still Running...')
-			r = []; w = []; e = []
-			for fd, obj in cls.socket_table.items():
-				obj.sock.settimeout(timeout)
-				is_r = obj.readable()
-				is_w = obj.writeable()
-
-				if is_r:
-					r.append(fd)
-				if is_w:
-					w.append(fd)
-				if is_r or is_w:
-					e.append(fd)
-	
-			if [] == r == w == e:
-				time.sleep(timeout)
-				continue
-
-			try:
-				r, w, e = select.select(r, w, e, timeout)
-			except select.error, err:
-				log_str = 'Error: %s' % err.args[0]
-				logging.root.error(log_str)
-
-				if err.args[0] != EINTR:
-					raise
-				else:
-					return
-
-			for fd in r:
-				obj = cls.socket_table.get(fd)
-				if obj is None:
-					continue
-				else:
-					cls.read(obj)
-
-			for fd in w:
-				obj = cls.socket_table.get(fd)
-				if obj is None:
-					continue
-				else:
-					cls.write(obj)
-
-			for fd in e:
-				obj = cls.socket_table.get(fd)
-				if obj is None:
-					continue
-				else:
-					cls._exception(obj)
-
-	def stop(cls):
-		logging.root.info('Stopping the EventLoop')
-		cls.paused = True
-
-	def read(cls, obj):
-		try:
-			obj.handle_read_event()
-		except _reraised_exceptions:
-			logging.root.error('Read error')
-			raise
-		except:
-			logging.exception('Read error')
-			obj.handle_except()
-
-	def write(cls, obj):
-		try:
-			obj.handle_write_event()
-		except _reraised_exceptions:
-			logging.root.error('Write error')
-			raise
-		except Exception, err:
-			logging.exception('Write error')
-			obj.handle_except()
-
-	def _exception(cls, obj):
-		try:
-			obj.handle_except_event()
-		except _reraised_exceptions:
-			logging.root.error('Exception error')
-			raise
-		except:
-			obj.handle_except()
+import eventloop
+from utils import _sockerror
 	
 class Dispatcher:
 	"""Dispatcher is an abstract class which is the default implementation for
@@ -184,8 +41,8 @@ class Dispatcher:
 			except socket.error, err:
 				if err.args[0] not in (ENOTCONN, EINVAL):
 					log_str = 'Error: %s' % _sockerror(err)
-					logging.root.error(log_str)
-					raise
+					logging.root.exception(log_str)
+					self.handle_close()
 				else:
 					log_str = 'Unable to auto-obtain addr: %s' % _sockerror(err.args[0])
 					logging.root.info(log_str)
@@ -198,8 +55,7 @@ class Dispatcher:
 		return self.sock.listen(num)
 	
 	def bind(self, addr):
-		self.addr = addr
-		return self.sock.bind(self.addr)
+		return self.sock.bind(addr)
 
 	def accept(self):
 		try:
@@ -217,13 +73,13 @@ class Dispatcher:
 	def close(self):
 		self.accepting = False
 		try:
-			del EventLoop.socket_table[self.sock.fileno()]			
+			if self.sock.fileno() in eventloop.socket_table:
+				del eventloop.socket_table[self.sock.fileno()]			
 			self.sock.close()
 		except socket.error, err:
 			if err.args[0] not in (ENOTCONN, EBADF):
 				log_str = 'Error: %s' % _sockerror(err.args[0])
-				logging.root.error(log_str)
-				raise
+				logging.root.exception(log_str)
 
 	def send(self, data):
 		try:
