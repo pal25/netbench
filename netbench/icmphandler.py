@@ -3,7 +3,6 @@ from packet import IP, ICMPHeader
 from utils import _sockerror, getLocalIP
 import eventloop
 import socket
-import urllib
 import logging
 import sys
 
@@ -11,11 +10,12 @@ class ICMPHandler(Dispatcher):
 	def __init__(self, destaddr):
 		Dispatcher.__init__(self)
 
+		self.destaddr = destaddr
+		self.srcaddr = ('0.0.0.0', 1)
+
 		try:		
 			sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-			self.set_socket(sock)
-			self.srcaddr = (getLocalIP(), destaddr[1])
-			self.destaddr = destaddr						
+			self.set_socket(sock)	
 			self.bind(self.srcaddr)			
 		except socket.error, err:
 			log_str = 'Socket Error: %s' % _sockerror(err.args[0])

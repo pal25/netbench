@@ -2,6 +2,11 @@ import socket
 import logging
 import eventloop
 from utils import _sockerror
+
+# Error imports / sets
+from errno import EINTR, EINPROGRESS, EALREADY, EWOULDBLOCK, EISCONN, \
+				EINVAL, ENOTCONN, EBADF, ECONNRESET, ESHUTDOWN, EPIPE, \
+				ECONNABORTED, errorcode
 	
 class Dispatcher:
 	"""Dispatcher is an abstract class which is the default implementation for
@@ -35,18 +40,6 @@ class Dispatcher:
 		if self.sock is None:
 			sock.setblocking(0)
 			self.sock = sock
-			
-			try:
-				self.srcaddr = sock.getsockname()
-			except socket.error, err:
-				if err.args[0] not in (ENOTCONN, EINVAL):
-					log_str = 'Error: %s' % _sockerror(err)
-					logging.root.exception(log_str)
-					self.handle_close()
-				else:
-					log_str = 'Unable to auto-obtain addr: %s' % _sockerror(err.args[0])
-					logging.root.info(log_str)
-				
 
 	def listen(self, num):
 		self.accepting = true
@@ -55,6 +48,7 @@ class Dispatcher:
 		return self.sock.listen(num)
 	
 	def bind(self, addr):
+		self.addr = addr
 		return self.sock.bind(addr)
 
 	def accept(self):

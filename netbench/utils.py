@@ -33,13 +33,18 @@ def getLocalIP():
 	return: String version of IP address to the host.
 	"""
 	local_addr = '127.0.0.1'
+
 	try:
 		import urllib2
-		local_addr = urllib2.urlopen('http://prod-snscholar.case.edu').read()
+		ipreader = urllib2.urlopen('http://prod-snscholar.case.edu')
+		local_addr = ipreader.read()
+		ipreader.close()
+		#local_addr = '107.10.43.125'
+		
 	except urllib2.URLError, err:
 		log_str = 'URLLib2 Err: %s' % (err[0])
 		logging.root.warning(log_str)
 	
 	log_str = 'Local IP = %s' % local_addr
 	logging.root.debug(log_str)
-	return local_addr
+	return str(local_addr)

@@ -3,7 +3,6 @@ from packet import IP, Datagram, ICMPHeader
 from utils import _sockerror, getLocalIP
 import eventloop
 import socket
-import urllib
 import logging
 import os, sys
 
@@ -20,8 +19,6 @@ class UDPProbe(Dispatcher):
 			sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
 			sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)						
 			self.set_socket(sock)
-			self.destaddr = destaddr
-			self.srcaddr = (getLocalIP(), destaddr[1])
 		except socket.error, err:
 			if _sockerror(err.args[0]) == 'EPERM':
 				logging.root.error('You need sudo privilages to use raw sockets')			
@@ -31,6 +28,8 @@ class UDPProbe(Dispatcher):
 			sys.exit(-1)
 		
 		self.ident = eventloop.add_callback(self.binary_search)
+		self.destaddr = destaddr
+		self.srcaddr = (getLocalIP(), destaddr[1])
 
 		# Setup the IP/UDP packets for sending.		
 		self.datagram = Datagram(self.srcaddr[0],
@@ -48,8 +47,6 @@ class UDPProbe(Dispatcher):
 
 		log_str = 'Setup UDP socket (srcaddr=%s, srcport=%s) (destaddr=%s, destport=%s)' % (str(self.srcaddr[0]), str(self.srcaddr[1]), destaddr[0], str(destaddr[1]))
 		logging.root.info(log_str)
-
-		self.destaddr = destaddr
 
 	def __repr__(self):
 		return '<UDPProbe: Addr=(%s, %s), TTL=%s>' % (self.destaddr[0],str(self.destaddr[1]),self.max_ttl)
