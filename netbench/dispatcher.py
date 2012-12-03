@@ -1,6 +1,6 @@
 import socket
 import logging
-import eventloop
+from eventloop import EventLoop
 from utils import _sockerror
 
 # Error imports / sets
@@ -20,6 +20,7 @@ class Dispatcher:
 		self.sock = None
 		self.addr = None
 		self.accepting = False
+		self.eventloop = EventLoop()
 
 	# ==================================================================
 	# SOCKET WRAPPERS
@@ -67,8 +68,8 @@ class Dispatcher:
 	def close(self):
 		self.accepting = False
 		try:
-			if self.sock.fileno() in eventloop.socket_table:
-				del eventloop.socket_table[self.sock.fileno()]			
+			if self.sock.fileno() in self.eventloop.socket_table:
+				del self.eventloop.socket_table[self.sock.fileno()]			
 			self.sock.close()
 		except socket.error, err:
 			if err.args[0] not in (ENOTCONN, EBADF):

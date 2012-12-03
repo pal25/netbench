@@ -1,19 +1,22 @@
 from dispatcher import Dispatcher
 from packet import IP, Datagram, ICMPHeader
 from utils import _sockerror, getLocalIP
-import eventloop
+from eventloop import EventLoop 
 import socket
 import logging
 import os, sys
 
 class UDPProbe(Dispatcher):
 	def __init__(self, destaddr):
-		Dispatcher.__init__(self)	
+		Dispatcher.__init__(self)
+		
+		self.eventloop = EventLoop()	
 
 		self.ready = True
 		self.max_ttl = 16
 		self.current_ttl = 16
 		self.min_ttl = 0
+		self.idents = {}
 		
 		try:		
 			sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
@@ -27,31 +30,18 @@ class UDPProbe(Dispatcher):
 				logging.root.error(log_str)
 			sys.exit(-1)
 		
-		self.ident = eventloop.add_callback(self.binary_search)
 		self.destaddr = destaddr
 		self.srcaddr = (getLocalIP(), destaddr[1])
-
-		# Setup the IP/UDP packets for sending.		
-		self.datagram = Datagram(self.srcaddr[0],
-				destaddr[0],
-				self.srcaddr[1],
-				destaddr[1],
-				'')		
 		
-		self.packet = IP(socket.IPPROTO_UDP,
-				self.srcaddr[0],
-				destaddr[0],
-				self.datagram,
-				ttl=self.max_ttl,
-				ident = self.ident)
+		self.create_packet()
 
-		log_str = 'Setup UDP socket (srcaddr=%s, srcport=%s) (destaddr=%s, destport=%s)' % (str(self.srcaddr[0]), str(self.srcaddr[1]), destaddr[0], str(destaddr[1]))
+		log_str = 'Setup UDP socket (srcaddr=%s, srcport=%s) (destaddr=%s, destport=%s)' % (str(self.srcaddr[0]), str(self.srcaddr[1]), self.destaddr[0], str(self.destaddr[1]))
 		logging.root.info(log_str)
 
 	def __repr__(self):
 		return '<UDPProbe: Addr=(%s, %s), TTL=%s>' % (self.destaddr[0],str(self.destaddr[1]),self.max_ttl)
 
-	def binary_search(self, icmp):
+	def binary_search(self, icmp, ident):
 		"""Binary Search takes raw packet data, and searches for the proper number
 		of hops to a particular router.
 
@@ -77,12 +67,33 @@ class UDPProbe(Dispatcher):
 		if self.min_ttl >= self.max_ttl:
 			log_str = 'Found TTL: %d' % self.current_ttl
 			logging.root.info(log_str)
-			eventloop.stop()
+			self.eventloop.stop()
 		else:
-			self.packet.ttl = self.current_ttl
-			self.ready = True
+			self.create_packets()
 			log_str = 'Changing TTL: (Max:%s,Current:%s,Min:%s)' % (self.max_ttl, self.current_ttl, self.min_ttl)
 			logging.root.info(log_str)
+			
+	def create_packet(self):
+		for i in xrange(0,3):
+			ident = self.eventloop.add_callback(self.binary_search)
+			
+			msg = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ\x5b\x5c\x5d\x5e\x5f'
+			# Setup the IP/UDP packets for sending.		
+			datagram = Datagram(self.srcaddr[0],
+				self.destaddr[0],
+				self.srcaddr[1],
+				self.destaddr[1],
+				msg)		
+		
+			packet = IP(socket.IPPROTO_UDP,
+				self.srcaddr[0],
+				self.destaddr[0],
+				datagram,
+				ttl=self.current_ttl,
+				ident = ident)
+				
+			self.idents[ident] = (packet, True, 0, 0)	
+			self.ready = True
 		
 	def writeable(self):
 		"""See Dispatcher for details """
@@ -90,8 +101,13 @@ class UDPProbe(Dispatcher):
 
 	def handle_write(self):
 		"""See Dispatcher for details """
-		logging.root.debug('Handling Write: ID=%d' % self.packet.ident)
-		self.sock.sendto(self.packet.getdata, self.destaddr)
+		for ident in self.idents:
+			data = self.idents[ident]
+			if data[1] is True:
+				logging.root.debug('Handling Write: ID=%d' % ident)
+				self.sock.sendto(data[0].getdata, self.destaddr)
+				self.idents[ident] = (data[0], False, 0, 0)
+		
 		self.ready = False
 		
 	def handle_except(self):
@@ -102,5 +118,5 @@ class UDPProbe(Dispatcher):
 	def handle_close(self):
 		"""See Dispatcher for details """
 		logging.root.debug('Handling Close')
-		eventloop.stop()
+		self.eventloop.stop()
 		self.close()
