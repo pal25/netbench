@@ -102,8 +102,6 @@ class IP:
 		self.destaddr = parse_addr(destaddr)
 		self.data = data
 		
-		logging.root.debug('IP ID=%s' % ident)
-		
 		if total_length == 0:		
 			self.total_length = self.header_length + self.data.total_length
 		self.ip_header = None
@@ -136,8 +134,6 @@ class IP:
 	
 	@classmethod	
 	def disassemble(cls, recvdata):
-		logging.root.debug('IP Length: %d', len(recvdata))
-
 		version_ihl = struct.unpack('!B', recvdata[:1])[0]
 		version = (version_ihl >> 4) & 0x0f
 		ihl = version_ihl & 0x0f

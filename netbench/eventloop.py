@@ -3,7 +3,7 @@ import random
 import select
 import time
 import socket
-import sys #TODO: Get rid of this dependency
+import time
 from utils import _sockerror, _reraised_exceptions, _disconnected
 
 class Singleton(type):
@@ -35,15 +35,19 @@ class EventLoop:
 		fd = obj.sock.fileno()
 		if fd not in self.socket_table:
 			self.socket_table[fd] = obj
-		
-		log_str = 'Adding dispatcher: %s' % obj
-		logging.root.info(log_str)
+			log_str = 'Adding dispatcher: %s' % obj
+			logging.root.info(log_str)
 	
 	def run(self, timeout = 0.0):
 		self.paused = False
-		while not self.paused:
+		while not self.paused and len(self.probes) > 0:
 			r = []; w = []; e = []
 			for fd, obj in self.socket_table.items():
+				
+				if hasattr(obj, 'starttime') and obj.starttime:
+					if (time.time() - obj.starttime) > timeout:
+						obj.timeout()
+				
 				obj.sock.settimeout(timeout)
 				is_r = obj.readable()
 				is_w = obj.writeable()
@@ -94,7 +98,6 @@ class EventLoop:
 	def stop(self):
 		logging.root.info('Stopping the EventLoop')
 		self.paused = True
-		#sys.exit(0) #TODO: Get rid of this and back to paused
 		
 	def read(self, obj):
 		try:

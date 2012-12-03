@@ -43,11 +43,9 @@ def run(destaddrs, timeout):
 	eventloop = EventLoop()
 	
 	for destaddr in destaddrs:
-		probe = UDPProbe(destaddr)
-		handler = ICMPHandler(destaddr)
-		eventloop.add_dispatcher(handler)
-		eventloop.add_dispatcher(probe)
-	
+		eventloop.add_dispatcher(UDPProbe(destaddr))
+		eventloop.add_dispatcher(ICMPHandler(destaddr))
+			
 	eventloop.run(timeout)
 
 if __name__ == '__main__':

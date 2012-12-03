@@ -4,7 +4,7 @@ from utils import _sockerror, getLocalIP
 from eventloop import EventLoop
 import socket
 import logging
-import sys
+import sys, time
 
 class ICMPHandler(Dispatcher):
 	def __init__(self, destaddr):
@@ -34,6 +34,7 @@ class ICMPHandler(Dispatcher):
 
 	def handle_read(self):
 		logging.root.debug('Handling Read')
+		finishtime = int(round(time.time()*1000))
 		data, addr = self.sock.recvfrom(4096)
 		
 		recvIP = IP.disassemble(data)
@@ -41,7 +42,7 @@ class ICMPHandler(Dispatcher):
 		retnIP = IP.disassemble(recvICMP.data)
 		
 		if retnIP.ident in self.eventloop.probes:
-			self.eventloop.probes[retnIP.ident](recvICMP, retnIP.ident)	
+			self.eventloop.probes[retnIP.ident](recvICMP, retnIP.ident, finishtime)	
 
 	def handle_except(self):
 		logging.root.debug('Handling Except')
@@ -49,7 +50,6 @@ class ICMPHandler(Dispatcher):
 
 	def handle_close(self):
 		logging.root.debug('Handling Close')
-		self.eventloop.stop()
 		self.close()
 	
 		
