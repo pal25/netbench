@@ -7,7 +7,7 @@ import logging
 import os, sys, time
 
 class UDPProbe(Dispatcher):
-	def __init__(self, destaddr, output):
+	def __init__(self, destaddr, output=None):
 		Dispatcher.__init__(self)
 		
 		self.eventloop = EventLoop()

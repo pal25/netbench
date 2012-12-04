@@ -40,7 +40,7 @@ def parseargs():
 		
 	run(destaddrs, args.timeout, output)
 
-def run(destaddrs, timeout, output=None):
+def run(destaddrs, timeout, output):
 	eventloop = EventLoop()
 	
 	for destaddr in destaddrs:
