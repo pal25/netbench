@@ -58,8 +58,8 @@ class UDPProbe(Dispatcher):
 				
 				log_str = '%s: HOPS=%d, RTT=%d' % (self.destaddr[0], ttl, rtt)
 				logging.root.info(log_str)
-				if output:
-					output.write('%s, %d, %d' % (self.destaddr[0], ttl, rtt))
+				if self.output:
+					self.output.write('%s, %d, %d' % (self.destaddr[0], ttl, rtt))
 				
 				self.handle_close()
 			elif icmp.type == 11:
