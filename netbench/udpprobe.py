@@ -59,7 +59,7 @@ class UDPProbe(Dispatcher):
 				log_str = '%s: HOPS=%d, RTT=%d' % (self.destaddr[0], ttl, rtt)
 				logging.root.info(log_str)
 				if self.output:
-					self.output.write('%s, %d, %d' % (self.destaddr[0], ttl, rtt))
+					self.output.write('%s, %d, %d\n' % (self.destaddr[0], ttl, rtt))
 				
 				self.handle_close()
 			elif icmp.type == 11:
@@ -83,6 +83,8 @@ class UDPProbe(Dispatcher):
 		
 		if self.current_ttl > 128:
 			logging.root.info('Packets cannot reach server')
+			if self.output:
+				self.output.write('%s, x, x\n' % self.destaddr[0])
 			self.handle_close()
 			return
 		else:
