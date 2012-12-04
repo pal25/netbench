@@ -15,8 +15,9 @@ def parseargs():
 	
 	args = parser.parse_args()
 
+	output = None
 	if args.output:
-		sys.stdout = open(args.output, 'w')
+		output = open(args.output, 'a')
 
 	if args.level == 'DEBUG':
 		level = logging.DEBUG
@@ -37,13 +38,13 @@ def parseargs():
 	for destaddr in args.address:
 		destaddrs.append((destaddr, args.port))
 		
-	run(destaddrs, args.timeout)
+	run(destaddrs, args.timeout, output)
 
-def run(destaddrs, timeout):
+def run(destaddrs, timeout, output=None):
 	eventloop = EventLoop()
 	
 	for destaddr in destaddrs:
-		eventloop.add_dispatcher(UDPProbe(destaddr))
+		eventloop.add_dispatcher(UDPProbe(destaddr, output))
 		eventloop.add_dispatcher(ICMPHandler(destaddr))
 			
 	eventloop.run(timeout)

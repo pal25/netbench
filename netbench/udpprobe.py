@@ -7,12 +7,13 @@ import logging
 import os, sys, time
 
 class UDPProbe(Dispatcher):
-	def __init__(self, destaddr):
+	def __init__(self, destaddr, output):
 		Dispatcher.__init__(self)
 		
 		self.eventloop = EventLoop()
 		
 		self.starttime = None
+		self.output = output
 
 		self.ready = True
 		self.max_ttl = 16
@@ -57,6 +58,9 @@ class UDPProbe(Dispatcher):
 				
 				log_str = '%s: HOPS=%d, RTT=%d' % (self.destaddr[0], ttl, rtt)
 				logging.root.info(log_str)
+				if output:
+					output.write('%s, %d, %d' % (self.destaddr[0], ttl, rtt))
+				
 				self.handle_close()
 			elif icmp.type == 11:
 				logging.root.debug('TTL Estimate Too Low')
